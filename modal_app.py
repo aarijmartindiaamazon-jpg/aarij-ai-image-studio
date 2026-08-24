@@ -66,10 +66,14 @@ hf_secret = modal.Secret.from_name("huggingface-secret")
     timeout=20 * 60,
     startup_timeout=20 * 60,
     scaledown_window=5 * 60,
+    max_containers=1,
     volumes={"/cache": model_cache},
     secrets=[hf_secret],
 )
-@modal.concurrent(max_inputs=1)
+# Gradio makes several parallel HTTP requests for one browser session. Keeping
+# those requests in a single concurrent container preserves its queue state and
+# uploaded /tmp files. GPU generation remains serialized by demo.queue().
+@modal.concurrent(max_inputs=100)
 @modal.web_server(7860, startup_timeout=20 * 60)
 def web():
     """Start Gradio on Modal's externally routed container port."""
