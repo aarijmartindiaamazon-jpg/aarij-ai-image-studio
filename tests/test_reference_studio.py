@@ -25,3 +25,14 @@ def test_extract_upscales_every_panel():
     panels = extract_and_enhance_panels(canvas, scale=2, sharpen=0)
     assert len(panels) == 2
     assert panels[0].size == (200, 200)
+
+
+def test_detects_thin_dark_dividers_without_splitting_wide_backgrounds():
+    canvas = np.full((220, 320, 3), 80, dtype=np.uint8)
+    canvas[:, 158:162] = 0
+    canvas[108:112, :158] = 0
+    canvas[:, 230:300] = 5  # wide dark image area must not become a divider
+    image = Image.fromarray(canvas)
+
+    boxes = detect_panel_boxes(image, min_panel=40)
+    assert len(boxes) == 3

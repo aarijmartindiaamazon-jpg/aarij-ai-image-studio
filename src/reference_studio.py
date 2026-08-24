@@ -24,14 +24,14 @@ class PanelBox:
         return self.bottom - self.top
 
 
-def _runs(values: np.ndarray) -> list[tuple[int, int]]:
+def _runs(values: np.ndarray, max_gap: int = 0) -> list[tuple[int, int]]:
     indexes = np.flatnonzero(values)
     if not len(indexes):
         return []
     starts = [int(indexes[0])]
     ends: list[int] = []
     for previous, current in zip(indexes, indexes[1:]):
-        if current != previous + 1:
+        if current > previous + max_gap + 1:
             ends.append(int(previous) + 1)
             starts.append(int(current))
     ends.append(int(indexes[-1]) + 1)
@@ -39,6 +39,7 @@ def _runs(values: np.ndarray) -> list[tuple[int, int]]:
 
 
 def detect_panel_boxes(image: Image.Image, *, white_threshold: int = 230,
+                       dark_threshold: int = 14,
                        coverage: float = 0.96, min_panel: int = 96,
                        max_divider: int = 16) -> list[PanelBox]:
     """Recursively split a collage along thin near-white separator lines.
@@ -48,33 +49,40 @@ def detect_panel_boxes(image: Image.Image, *, white_threshold: int = 230,
     returned as one panel.
     """
     rgb = np.asarray(image.convert("RGB"))
-    bright = np.min(rgb, axis=2) >= white_threshold
-    height, width = bright.shape
+    bright_pixels = np.min(rgb, axis=2) >= white_threshold
+    dark_pixels = np.max(rgb, axis=2) <= dark_threshold
+    height, width = bright_pixels.shape
 
     def split(box: PanelBox) -> list[PanelBox]:
         if box.width < min_panel * 2 or box.height < min_panel:
             return [box]
-        area = bright[box.top:box.bottom, box.left:box.right]
         margin = max(4, min(20, min(box.width, box.height) // 20))
         candidates: list[tuple[float, str, int, int]] = []
 
-        vertical = area.mean(axis=0) >= coverage
-        for start, end in _runs(vertical):
-            if start < margin or end > box.width - margin or end - start > max_divider:
-                continue
-            if start < min_panel or box.width - end < min_panel:
-                continue
-            balance = min(start, box.width - end) / max(start, box.width - end)
-            candidates.append((balance, "v", start, end))
+        def add_candidates(pixel_mask: np.ndarray, allowed_width: int, max_gap: int = 0) -> None:
+            area = pixel_mask[box.top:box.bottom, box.left:box.right]
+            vertical = area.mean(axis=0) >= coverage
+            for start, end in _runs(vertical, max_gap=max_gap):
+                if start < margin or end > box.width - margin or end - start > allowed_width:
+                    continue
+                if start < min_panel or box.width - end < min_panel:
+                    continue
+                balance = min(start, box.width - end) / max(start, box.width - end)
+                candidates.append((balance, "v", start, end))
 
-        horizontal = area.mean(axis=1) >= coverage
-        for start, end in _runs(horizontal):
-            if start < margin or end > box.height - margin or end - start > max_divider:
-                continue
-            if start < min_panel or box.height - end < min_panel:
-                continue
-            balance = min(start, box.height - end) / max(start, box.height - end)
-            candidates.append((balance, "h", start, end))
+            horizontal = area.mean(axis=1) >= coverage
+            for start, end in _runs(horizontal, max_gap=max_gap):
+                if start < margin or end > box.height - margin or end - start > allowed_width:
+                    continue
+                if start < min_panel or box.height - end < min_panel:
+                    continue
+                balance = min(start, box.height - end) / max(start, box.height - end)
+                candidates.append((balance, "h", start, end))
+
+        add_candidates(bright_pixels, max_divider)
+        # Dark editorial gutters are often wider because they blend into black
+        # product-photo backgrounds. Very wide dark runs remain excluded.
+        add_candidates(dark_pixels, max(64, max_divider), max_gap=3)
 
         if not candidates:
             return [box]
