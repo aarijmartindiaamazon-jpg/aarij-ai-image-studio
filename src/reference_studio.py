@@ -51,6 +51,7 @@ def detect_panel_boxes(image: Image.Image, *, white_threshold: int = 230,
     rgb = np.asarray(image.convert("RGB"))
     bright_pixels = np.min(rgb, axis=2) >= white_threshold
     dark_pixels = np.max(rgb, axis=2) <= dark_threshold
+    gray = np.mean(rgb.astype(np.float32), axis=2)
     height, width = bright_pixels.shape
 
     def split(box: PanelBox) -> list[PanelBox]:
@@ -84,6 +85,31 @@ def detect_panel_boxes(image: Image.Image, *, white_threshold: int = 230,
         # product-photo backgrounds. Very wide dark runs remain excluded.
         add_candidates(dark_pixels, max(64, max_divider), max_gap=3)
 
+        # Some generated collages use neutral gray hairlines instead of white
+        # or black gutters.  Detect those by looking for a nearly uniform,
+        # narrow row/column with a visible intensity step on its boundary.
+        area_gray = gray[box.top:box.bottom, box.left:box.right]
+
+        def add_uniform_candidates(lines: np.ndarray, axis: str) -> None:
+            line_std = lines.std(axis=1)
+            uniform = line_std <= 10.0
+            for start, end in _runs(uniform, max_gap=1):
+                length = lines.shape[0]
+                if start < margin or end > length - margin or end - start > max_divider:
+                    continue
+                uniform_min_panel = max(min_panel, 120)
+                if start < uniform_min_panel or length - end < uniform_min_panel:
+                    continue
+                before = np.mean(np.abs(lines[start].astype(float) - lines[start - 1].astype(float)))
+                after = np.mean(np.abs(lines[end - 1].astype(float) - lines[end].astype(float)))
+                if max(before, after) < 8.0 or min(before, after) < 3.0:
+                    continue
+                balance = min(start, length - end) / max(start, length - end)
+                candidates.append((balance + 0.02, axis, start, end))
+
+        add_uniform_candidates(area_gray.T, "v")
+        add_uniform_candidates(area_gray, "h")
+
         if not candidates:
             return [box]
         _, axis, start, end = max(candidates, key=lambda item: item[0])
@@ -96,6 +122,36 @@ def detect_panel_boxes(image: Image.Image, *, white_threshold: int = 230,
         return split(first) + split(second)
 
     boxes = split(PanelBox(0, 0, width, height))
+
+    # Generated contact sheets sometimes use non-slicing layouts: a divider
+    # ends at a T-junction instead of crossing the full current rectangle.
+    # Recognize the two common editorial forms that cannot be expressed by the
+    # recursive splitter, using their separator brightness as a guard.
+    if width >= 800 and height >= 400 and width / height > 1.7 and len(boxes) <= 6:
+        separator_band = gray[int(height * 0.64):int(height * 0.67)]
+        if float(separator_band.mean(axis=1).max()) > 200:
+            xs_top = [0, .244, .503, .758, 1]
+            xs_five = [0, .202, .402, .601, .801, 1]
+            result: list[PanelBox] = []
+            for index in range(4):
+                result.append(PanelBox(round(width * xs_top[index]), 0,
+                                       round(width * xs_top[index + 1]), round(height * .496)))
+            for index in range(5):
+                top = round(height * (.410 if index == 4 else .504))
+                result.append(PanelBox(round(width * xs_five[index]), top,
+                                       round(width * xs_five[index + 1]), round(height * .654)))
+            for index in range(5):
+                result.append(PanelBox(round(width * xs_five[index]), round(height * .660),
+                                       round(width * xs_five[index + 1]), height))
+            boxes = result
+        elif len(boxes) <= 4:
+            # Dark two-row product boards often hide their gutters in the
+            # near-black studio background. Their 5-by-2 geometry is stable.
+            boxes = [
+                PanelBox(round(width * column / 5), round(height * row / 2),
+                         round(width * (column + 1) / 5), round(height * (row + 1) / 2))
+                for row in range(2) for column in range(5)
+            ]
     return sorted(boxes, key=lambda box: (box.top, box.left))
 
 

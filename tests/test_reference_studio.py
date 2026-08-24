@@ -36,3 +36,13 @@ def test_detects_thin_dark_dividers_without_splitting_wide_backgrounds():
 
     boxes = detect_panel_boxes(image, min_panel=40)
     assert len(boxes) == 3
+
+
+def test_detects_neutral_gray_hairline_dividers():
+    rng = np.random.default_rng(7)
+    canvas = rng.integers(0, 130, size=(300, 500, 3), dtype=np.uint8)
+    canvas[:, 248:252] = 68
+
+    boxes = detect_panel_boxes(Image.fromarray(canvas), min_panel=40)
+
+    assert len(boxes) == 2
