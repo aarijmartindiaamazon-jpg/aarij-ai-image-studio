@@ -49,13 +49,21 @@ def _seed(value: int | float | None, randomize: bool) -> int:
 
 
 @spaces.GPU(duration=120)
-def generate_flux(prompt: str, reference, strength: float, style: str, width: int,
+def generate_flux(prompt: str, reference, strength: float, product_lock: bool, style: str, width: int,
                   height: int, count: int, seed: int, randomize: bool, steps: int,
                   progress=gr.Progress()):
     if not prompt or not prompt.strip():
         raise gr.Error("Please describe the image you want to create.")
     used_seed = _seed(seed, randomize)
-    full_prompt = f"{prompt.strip()}, {STYLES.get(style, '')}".strip(", ")
+    preservation = ""
+    if reference is not None and product_lock:
+        strength = min(float(strength), 0.35)
+        preservation = (
+            "preserve the uploaded product identity and exact visible design: logo, readable text, dial layout, "
+            "hands, indices, date window, case, crown, bracelet links, colors, materials, proportions and engravings; "
+            "do not redesign, replace, add or remove product features, "
+        )
+    full_prompt = f"{preservation}{prompt.strip()}, {STYLES.get(style, '')}".strip(", ")
     width = max(512, int(width) // 16 * 16)
     height = max(512, int(height) // 16 * 16)
     count = min(4, max(1, int(count)))
@@ -82,7 +90,9 @@ def generate_flux(prompt: str, reference, strength: float, style: str, width: in
         ]
         seeds = ", ".join(str(used_seed + index) for index in range(count))
         progress(1.0, desc="Complete")
-        mode = "reference recreation" if reference is not None else "text generation"
+        mode = "product-locked reference recreation" if reference is not None and product_lock else (
+            "reference recreation" if reference is not None else "text generation"
+        )
         return images, paths, seeds, f"Created {count} image(s) with FLUX.1-schnell · {mode}."
     except Exception as exc:
         raise gr.Error(friendly_error(exc, debug=True)) from exc
@@ -142,8 +152,11 @@ def build_space() -> gr.Blocks:
                                         placeholder="A premium green bean bag in a modern Indian living room, realistic scale...")
                     reference = gr.Image(label="Optional reference image", type="pil")
                     reference_strength = gr.Slider(
-                        0.15, 0.95, 0.55, step=0.05,
+                        0.15, 0.95, 0.30, step=0.05,
                         label="Reference recreation strength (lower preserves more)",
+                    )
+                    product_lock = gr.Checkbox(
+                        True, label="Product Detail Lock (recommended for watches/products)",
                     )
                     style = gr.Dropdown(list(STYLES), value="Ecommerce Product", label="Style")
                     with gr.Row():
@@ -160,7 +173,7 @@ def build_space() -> gr.Blocks:
                     downloads = gr.File(label="Download images", file_count="multiple")
                     seeds = gr.Textbox(label="Seeds used", interactive=False)
                     status = gr.Textbox(label="Status", interactive=False)
-            button.click(generate_flux, [prompt, reference, reference_strength, style, width, height, count, seed, randomize, steps],
+            button.click(generate_flux, [prompt, reference, reference_strength, product_lock, style, width, height, count, seed, randomize, steps],
                          [gallery, downloads, seeds, status])
 
         with gr.Tab("Collage Crop & Enhance"):
