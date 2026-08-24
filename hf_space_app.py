@@ -9,10 +9,12 @@ from pathlib import Path
 import gradio as gr
 import spaces
 import torch
-from diffusers import FluxPipeline
+from diffusers import FluxImg2ImgPipeline, FluxPipeline
+from PIL import Image, ImageOps
 
 from src.errors import friendly_error
 from src.marketplace import create_white_background
+from src.reference_studio import extract_and_enhance_panels
 from src.storage import StorageManager
 
 
@@ -35,6 +37,8 @@ STYLES = {
 flux = FluxPipeline.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16)
 flux.to("cuda")
 flux.set_progress_bar_config(disable=True)
+flux_img2img = FluxImg2ImgPipeline.from_pipe(flux)
+flux_img2img.set_progress_bar_config(disable=True)
 
 
 def _seed(value: int | float | None, randomize: bool) -> int:
@@ -44,8 +48,9 @@ def _seed(value: int | float | None, randomize: bool) -> int:
 
 
 @spaces.GPU(duration=120)
-def generate_flux(prompt: str, style: str, width: int, height: int, count: int,
-                  seed: int, randomize: bool, steps: int, progress=gr.Progress()):
+def generate_flux(prompt: str, reference, strength: float, style: str, width: int,
+                  height: int, count: int, seed: int, randomize: bool, steps: int,
+                  progress=gr.Progress()):
     if not prompt or not prompt.strip():
         raise gr.Error("Please describe the image you want to create.")
     used_seed = _seed(seed, randomize)
@@ -57,16 +62,17 @@ def generate_flux(prompt: str, style: str, width: int, height: int, count: int,
     progress(0.15, desc="ZeroGPU allocated · generating with FLUX")
     try:
         with torch.inference_mode():
-            images = flux(
-                prompt=full_prompt,
-                width=width,
-                height=height,
+            common = dict(
+                prompt=full_prompt, width=width, height=height,
                 num_inference_steps=min(4, max(1, int(steps))),
-                guidance_scale=0.0,
-                num_images_per_prompt=count,
-                generator=generators,
-                max_sequence_length=256,
-            ).images
+                guidance_scale=0.0, num_images_per_prompt=count,
+                generator=generators, max_sequence_length=256,
+            )
+            if reference is not None:
+                init_image = ImageOps.fit(reference.convert("RGB"), (width, height), Image.Resampling.LANCZOS)
+                images = flux_img2img(image=init_image, strength=float(strength), **common).images
+            else:
+                images = flux(**common).images
         paths = [
             str(storage.save_image(image, "generated-images", "flux", {
                 "model": MODEL_ID, "prompt": full_prompt, "seed": used_seed + index,
@@ -75,7 +81,8 @@ def generate_flux(prompt: str, style: str, width: int, height: int, count: int,
         ]
         seeds = ", ".join(str(used_seed + index) for index in range(count))
         progress(1.0, desc="Complete")
-        return images, paths, seeds, f"Created {count} image(s) with FLUX.1-schnell."
+        mode = "reference recreation" if reference is not None else "text generation"
+        return images, paths, seeds, f"Created {count} image(s) with FLUX.1-schnell · {mode}."
     except Exception as exc:
         raise gr.Error(friendly_error(exc, debug=True)) from exc
 
@@ -85,6 +92,22 @@ def white_background(source, canvas, coverage, padding, shadow, strength):
         image = create_white_background(source, int(canvas), int(coverage), int(padding), bool(shadow), float(strength))
         path = storage.save_image(image, "white-background", "marketplace")
         return image, str(path), "Complete · original product pixels preserved."
+    except Exception as exc:
+        raise gr.Error(friendly_error(exc, debug=True)) from exc
+
+
+def split_collage(source, scale, sharpen):
+    if source is None:
+        raise gr.Error("Upload a collage or multi-image picture first.")
+    try:
+        panels = extract_and_enhance_panels(source, int(scale), float(sharpen))
+        paths = [
+            str(storage.save_image(panel, "reference-panels", f"panel_{index:02d}", {
+                "workflow": "pixel-preserving collage extraction", "scale": int(scale),
+            }))
+            for index, panel in enumerate(panels, start=1)
+        ]
+        return panels, paths, f"Extracted and enhanced {len(panels)} panel(s). No AI details were invented."
     except Exception as exc:
         raise gr.Error(friendly_error(exc, debug=True)) from exc
 
@@ -99,6 +122,11 @@ def build_space() -> gr.Blocks:
                 with gr.Column():
                     prompt = gr.Textbox(label="Describe your image", lines=5,
                                         placeholder="A premium green bean bag in a modern Indian living room, realistic scale...")
+                    reference = gr.Image(label="Optional reference image", type="pil")
+                    reference_strength = gr.Slider(
+                        0.15, 0.95, 0.55, step=0.05,
+                        label="Reference recreation strength (lower preserves more)",
+                    )
                     style = gr.Dropdown(list(STYLES), value="Ecommerce Product", label="Style")
                     with gr.Row():
                         width = gr.Dropdown([768, 1024, 1280], value=1024, label="Width")
@@ -114,8 +142,24 @@ def build_space() -> gr.Blocks:
                     downloads = gr.File(label="Download images", file_count="multiple")
                     seeds = gr.Textbox(label="Seeds used", interactive=False)
                     status = gr.Textbox(label="Status", interactive=False)
-            button.click(generate_flux, [prompt, style, width, height, count, seed, randomize, steps],
+            button.click(generate_flux, [prompt, reference, reference_strength, style, width, height, count, seed, randomize, steps],
                          [gallery, downloads, seeds, status])
+
+        with gr.Tab("Collage Crop & Enhance"):
+            gr.Markdown(
+                "Upload a multi-panel image. White divider lines are detected automatically, "
+                "and every panel is exported separately. This preserves the source pixels and is safest for product accuracy."
+            )
+            collage = gr.Image(label="Collage / contact sheet", type="pil")
+            with gr.Row():
+                panel_scale = gr.Dropdown([1, 2, 3, 4], value=2, label="Upscale factor")
+                panel_sharpen = gr.Slider(0, 2, 1, step=0.1, label="Detail sharpening")
+            split_button = gr.Button("Extract All Panels", variant="primary")
+            panel_gallery = gr.Gallery(label="Separate enhanced panels", columns=3, height="auto")
+            panel_files = gr.File(label="Download all panels", file_count="multiple")
+            panel_status = gr.Textbox(label="Status", interactive=False)
+            split_button.click(split_collage, [collage, panel_scale, panel_sharpen],
+                               [panel_gallery, panel_files, panel_status])
 
         with gr.Tab("White Background"):
             gr.Markdown("This mode does not regenerate the product. It removes the background and preserves the uploaded product pixels.")
