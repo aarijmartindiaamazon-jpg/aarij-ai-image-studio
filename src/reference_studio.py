@@ -156,15 +156,27 @@ def detect_panel_boxes(image: Image.Image, *, white_threshold: int = 230,
 
 
 def extract_and_enhance_panels(image: Image.Image, scale: int = 2,
-                               sharpen: float = 1.0) -> list[Image.Image]:
-    """Extract all detected panels, upscale with Lanczos, and lightly sharpen."""
+                               sharpen: float = 1.0, min_short_side: int = 1024,
+                               target_long_side: int | None = None) -> list[Image.Image]:
+    """Extract panels and upscale without changing their aspect ratios.
+
+    Every output has at least ``min_short_side`` pixels on its shortest edge.
+    When requested, ``target_long_side`` raises the long edge to that target
+    (for example 3840 for a 4K export), but never downsizes a larger source.
+    """
     source = image.convert("RGB")
     scale = min(4, max(1, int(scale)))
     results: list[Image.Image] = []
     for box in detect_panel_boxes(source):
         panel = source.crop((box.left, box.top, box.right, box.bottom))
-        if scale > 1:
-            panel = panel.resize((panel.width * scale, panel.height * scale), Image.Resampling.LANCZOS)
+        required_scale = max(float(scale), min_short_side / min(panel.size))
+        if target_long_side:
+            required_scale = max(required_scale, int(target_long_side) / max(panel.size))
+        if required_scale > 1:
+            panel = panel.resize(
+                (round(panel.width * required_scale), round(panel.height * required_scale)),
+                Image.Resampling.LANCZOS,
+            )
         if sharpen > 0:
             radius = 1.2 if scale <= 2 else 1.8
             panel = panel.filter(ImageFilter.UnsharpMask(radius=radius, percent=int(90 * sharpen), threshold=3))

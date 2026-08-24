@@ -22,9 +22,22 @@ def test_extract_upscales_every_panel():
         for y in range(100):
             canvas.putpixel((x, y), (255, 255, 255))
 
-    panels = extract_and_enhance_panels(canvas, scale=2, sharpen=0)
+    panels = extract_and_enhance_panels(canvas, scale=2, sharpen=0, min_short_side=0)
     assert len(panels) == 2
     assert panels[0].size == (200, 200)
+
+
+def test_exports_minimum_1024px_short_edge_and_optional_4k():
+    image = Image.new("RGB", (300, 200), "navy")
+
+    minimum = extract_and_enhance_panels(image, scale=1, sharpen=0)
+    four_k = extract_and_enhance_panels(
+        image, scale=1, sharpen=0, target_long_side=3840,
+    )
+
+    assert min(minimum[0].size) >= 1024
+    assert max(four_k[0].size) == 3840
+    assert four_k[0].size[0] / four_k[0].size[1] == 1.5
 
 
 def test_detects_thin_dark_dividers_without_splitting_wide_backgrounds():

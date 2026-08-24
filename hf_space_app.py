@@ -97,14 +97,19 @@ def white_background(source, canvas, coverage, padding, shadow, strength):
         raise gr.Error(friendly_error(exc, debug=True)) from exc
 
 
-def split_collage(source, scale, sharpen):
+def split_collage(source, scale, quality, sharpen):
     if source is None:
         raise gr.Error("Upload a collage or multi-image picture first.")
     try:
-        panels = extract_and_enhance_panels(source, int(scale), float(sharpen))
+        target_long_side = 3840 if str(quality).startswith("4K") else None
+        panels = extract_and_enhance_panels(
+            source, int(scale), float(sharpen), min_short_side=1024,
+            target_long_side=target_long_side,
+        )
         paths = [
             str(storage.save_image(panel, "reference-panels", f"panel_{index:02d}", {
                 "workflow": "pixel-preserving collage extraction", "scale": int(scale),
+                "quality": str(quality), "minimum_short_side": 1024,
             }))
             for index, panel in enumerate(panels, start=1)
         ]
@@ -112,7 +117,8 @@ def split_collage(source, scale, sharpen):
         with ZipFile(zip_path, "w", compression=ZIP_DEFLATED) as archive:
             for index, path in enumerate(paths, start=1):
                 archive.write(path, arcname=f"aarij_enhanced_panel_{index:02d}.png")
-        return panels, paths, str(zip_path), f"Extracted and enhanced {len(panels)} panel(s). No AI details were invented."
+        size_label = "4K long edge" if target_long_side else "minimum 1024px short edge"
+        return panels, paths, str(zip_path), f"Extracted {len(panels)} panel(s) at {size_label}. No AI details were invented."
     except Exception as exc:
         raise gr.Error(friendly_error(exc, debug=True)) from exc
 
@@ -158,13 +164,17 @@ def build_space() -> gr.Blocks:
             collage = gr.Image(label="Collage / contact sheet", type="pil")
             with gr.Row():
                 panel_scale = gr.Dropdown([1, 2, 3, 4], value=2, label="Upscale factor")
+                panel_quality = gr.Dropdown(
+                    ["Minimum 1024px", "4K (3840px long edge)"],
+                    value="Minimum 1024px", label="Export quality",
+                )
                 panel_sharpen = gr.Slider(0, 2, 1, step=0.1, label="Detail sharpening")
             split_button = gr.Button("Extract All Panels", variant="primary")
             panel_gallery = gr.Gallery(label="Separate enhanced panels", columns=3, height="auto")
             panel_files = gr.File(label="Download all panels", file_count="multiple")
             panel_zip = gr.File(label="Download All Panels (ZIP)")
             panel_status = gr.Textbox(label="Status", interactive=False)
-            split_button.click(split_collage, [collage, panel_scale, panel_sharpen],
+            split_button.click(split_collage, [collage, panel_scale, panel_quality, panel_sharpen],
                                [panel_gallery, panel_files, panel_zip, panel_status])
 
         with gr.Tab("White Background"):
