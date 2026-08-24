@@ -11,5 +11,6 @@ huggingface-hub==0.34.4
 sentencepiece==0.2.1
 protobuf==6.32.0
 spaces
+modal>=1.1.4,<2
 pytest==8.4.1
 

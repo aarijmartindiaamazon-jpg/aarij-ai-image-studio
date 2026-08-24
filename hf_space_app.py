@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import os
 from pathlib import Path
 
 import gradio as gr
@@ -144,5 +145,9 @@ def build_space() -> gr.Blocks:
 demo = build_space()
 
 if __name__ == "__main__":
-    demo.queue(default_concurrency_limit=1).launch(allowed_paths=[str(OUTPUT_ROOT)])
+    demo.queue(default_concurrency_limit=1).launch(
+        server_name=os.getenv("GRADIO_SERVER_NAME", "127.0.0.1"),
+        server_port=int(os.getenv("PORT", "7860")),
+        allowed_paths=[str(OUTPUT_ROOT)],
+    )
 

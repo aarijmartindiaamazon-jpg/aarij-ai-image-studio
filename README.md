@@ -14,6 +14,19 @@ models:
 
 # Aarij AI Image Studio
 
+## Deploy on Modal (L40S GPU)
+
+Modal provides a monthly free compute credit on its Starter plan; it is a finite credit, not unlimited GPU time. The app scales to zero after five idle minutes and caches FLUX weights in a persistent Volume.
+
+```bash
+pip install modal
+modal setup
+modal secret create huggingface-secret HF_TOKEN=hf_your_token
+modal deploy modal_app.py
+```
+
+Before creating the secret, accept the FLUX.1-schnell license on Hugging Face and create a read token. The deploy command prints the permanent Modal URL. The first request downloads the model and is slow; later warm requests are much faster.
+
 Aarij AI Image Studio is a browser-based image generation and ecommerce product-image toolkit designed for a free Google Colab T4 GPU. It runs downloadable Hugging Face models directly in Python—no paid image API or local high-end computer is required.
 
 > Product accuracy comes first. Use **White Background** for marketplace main images because it preserves the uploaded product pixels. AI-assisted lifestyle, image-to-image, and inpainting workflows can alter colors, logos, stitching, texture, shape, and proportions; always inspect their output.
