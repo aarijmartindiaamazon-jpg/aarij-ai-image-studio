@@ -23,4 +23,6 @@ def test_space_supports_reference_and_collage_workflows():
     assert "FluxImg2ImgPipeline(**flux.components)" in app
     assert "Optional reference image" in app
     assert "Collage Crop & Enhance" in app
+    assert "Download All Panels (ZIP)" in app
+    assert "GRADIO_ROOT_PATH" in app
 

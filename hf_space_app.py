@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import os
+from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 
 import gradio as gr
@@ -107,7 +108,11 @@ def split_collage(source, scale, sharpen):
             }))
             for index, panel in enumerate(panels, start=1)
         ]
-        return panels, paths, f"Extracted and enhanced {len(panels)} panel(s). No AI details were invented."
+        zip_path = storage.unique_path("reference-panels", "all_panels", "zip")
+        with ZipFile(zip_path, "w", compression=ZIP_DEFLATED) as archive:
+            for index, path in enumerate(paths, start=1):
+                archive.write(path, arcname=f"aarij_enhanced_panel_{index:02d}.png")
+        return panels, paths, str(zip_path), f"Extracted and enhanced {len(panels)} panel(s). No AI details were invented."
     except Exception as exc:
         raise gr.Error(friendly_error(exc, debug=True)) from exc
 
@@ -157,9 +162,10 @@ def build_space() -> gr.Blocks:
             split_button = gr.Button("Extract All Panels", variant="primary")
             panel_gallery = gr.Gallery(label="Separate enhanced panels", columns=3, height="auto")
             panel_files = gr.File(label="Download all panels", file_count="multiple")
+            panel_zip = gr.File(label="Download All Panels (ZIP)")
             panel_status = gr.Textbox(label="Status", interactive=False)
             split_button.click(split_collage, [collage, panel_scale, panel_sharpen],
-                               [panel_gallery, panel_files, panel_status])
+                               [panel_gallery, panel_files, panel_zip, panel_status])
 
         with gr.Tab("White Background"):
             gr.Markdown("This mode does not regenerate the product. It removes the background and preserves the uploaded product pixels.")
@@ -192,6 +198,7 @@ if __name__ == "__main__":
     demo.queue(default_concurrency_limit=1).launch(
         server_name=os.getenv("GRADIO_SERVER_NAME", "127.0.0.1"),
         server_port=int(os.getenv("PORT", "7860")),
+        root_path=os.getenv("GRADIO_ROOT_PATH") or None,
         allowed_paths=[str(OUTPUT_ROOT)],
     )
 

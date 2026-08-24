@@ -46,6 +46,7 @@ image = (
             "HF_HUB_CACHE": f"{CACHE_DIR}/hub",
             "HF_XET_HIGH_PERFORMANCE": "1",
             "GRADIO_SERVER_NAME": "0.0.0.0",
+            "GRADIO_ROOT_PATH": "https://aarijmartindiaamazon-jpg--aarij-ai-image-studio-web.modal.run",
             "PORT": "7860",
         }
     )
