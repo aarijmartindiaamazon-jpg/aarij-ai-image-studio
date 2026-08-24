@@ -169,17 +169,23 @@ def extract_and_enhance_panels(image: Image.Image, scale: int = 2,
     results: list[Image.Image] = []
     for box in detect_panel_boxes(source):
         panel = source.crop((box.left, box.top, box.right, box.bottom))
+        original_size = panel.size
         required_scale = max(float(scale), min_short_side / min(panel.size))
         if target_long_side:
             required_scale = max(required_scale, int(target_long_side) / max(panel.size))
         if required_scale > 1:
-            panel = panel.resize(
-                (round(panel.width * required_scale), round(panel.height * required_scale)),
-                Image.Resampling.LANCZOS,
-            )
+            target_size = (round(panel.width * required_scale), round(panel.height * required_scale))
+            # Large one-step enlargement looks soft. Grow in at most 2x stages
+            # and recover a small amount of edge contrast between stages.
+            while panel.width * 2 < target_size[0] and panel.height * 2 < target_size[1]:
+                panel = panel.resize((panel.width * 2, panel.height * 2), Image.Resampling.LANCZOS)
+                panel = panel.filter(ImageFilter.UnsharpMask(radius=0.8, percent=55, threshold=3))
+            panel = panel.resize(target_size, Image.Resampling.LANCZOS)
         if sharpen > 0:
-            radius = 1.2 if scale <= 2 else 1.8
-            panel = panel.filter(ImageFilter.UnsharpMask(radius=radius, percent=int(90 * sharpen), threshold=3))
-            panel = ImageEnhance.Contrast(panel).enhance(1.02)
+            enlargement = max(panel.width / original_size[0], panel.height / original_size[1])
+            radius = 1.0 if enlargement <= 4 else 1.35
+            percent = int((115 if enlargement <= 4 else 155) * sharpen)
+            panel = panel.filter(ImageFilter.UnsharpMask(radius=radius, percent=percent, threshold=2))
+            panel = ImageEnhance.Contrast(panel).enhance(1.025)
         results.append(panel)
     return results

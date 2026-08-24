@@ -159,13 +159,14 @@ def build_space() -> gr.Blocks:
         with gr.Tab("Collage Crop & Enhance"):
             gr.Markdown(
                 "Upload a multi-panel image. White divider lines are detected automatically, "
-                "and every panel is exported separately. This preserves the source pixels and is safest for product accuracy."
+                "and every panel is exported separately. High-clarity enlargement improves edges, but a small source panel "
+                "cannot contain the same real detail as an original 4K photograph."
             )
             collage = gr.Image(label="Collage / contact sheet", type="pil")
             with gr.Row():
                 panel_scale = gr.Dropdown([1, 2, 3, 4], value=2, label="Upscale factor")
                 panel_quality = gr.Dropdown(
-                    ["Minimum 1024px", "4K (3840px long edge)"],
+                    ["Minimum 1024px", "4K High Clarity (3840px long edge)"],
                     value="Minimum 1024px", label="Export quality",
                 )
                 panel_sharpen = gr.Slider(0, 2, 1, step=0.1, label="Detail sharpening")
