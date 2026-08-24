@@ -1,0 +1,30 @@
+{
+  "Amazon Main Image": {
+    "workflow": "white_background",
+    "prompt": "pure white background, centered product, no text, no props, large product coverage, clean ecommerce presentation",
+    "product_size_percent": 85,
+    "shadow": false
+  },
+  "Flipkart Main Image": {
+    "workflow": "white_background",
+    "prompt": "clean pure white background, accurate product color, sharp product details, centered composition",
+    "product_size_percent": 84,
+    "shadow": false
+  },
+  "Meesho Product Image": {
+    "workflow": "white_background",
+    "prompt": "clean ecommerce presentation, square output, product clearly visible",
+    "product_size_percent": 82,
+    "shadow": true
+  },
+  "Modern living room": {"workflow": "img2img", "prompt": "place the product naturally in a modern living room, realistic scale and lighting"},
+  "Gaming room": {"workflow": "img2img", "prompt": "place the product in a stylish gaming room, tasteful RGB accent lighting, realistic scale"},
+  "Bedroom": {"workflow": "img2img", "prompt": "place the product naturally in a comfortable contemporary bedroom, soft daylight"},
+  "Kids room": {"workflow": "img2img", "prompt": "place the product in a cheerful tidy kids room, safe natural composition"},
+  "Office/lounge": {"workflow": "img2img", "prompt": "place the product in a polished office lounge, realistic commercial interior"},
+  "Premium studio": {"workflow": "img2img", "prompt": "premium studio scene around the product, elegant light, subtle floor reflection"},
+  "Indian home interior": {"workflow": "img2img", "prompt": "place the product in a contemporary Indian home interior, authentic tasteful decor"},
+  "Fabric Close-Up": {"workflow": "img2img", "prompt": "macro close-up emphasizing authentic fabric weave, seams, stitching and texture"},
+  "Advertisement Image": {"workflow": "img2img", "prompt": "premium product-focused advertisement composition, empty space for future text, no text, no claims"}
+}
+

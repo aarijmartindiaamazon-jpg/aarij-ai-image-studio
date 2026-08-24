@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+generated-images/
+uploads/
+marketplace/
+lifestyle/
+white-background/
+advertisements/
+temp/
+*.safetensors
+*.ckpt
+*.onnx
+
