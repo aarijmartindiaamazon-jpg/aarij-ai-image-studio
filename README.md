@@ -1,3 +1,17 @@
+---
+title: Aarij AI Image Studio
+emoji: 🛍️
+colorFrom: indigo
+colorTo: purple
+sdk: gradio
+sdk_version: 5.44.1
+app_file: hf_space_app.py
+pinned: false
+license: mit
+models:
+  - black-forest-labs/FLUX.1-schnell
+---
+
 # Aarij AI Image Studio
 
 Aarij AI Image Studio is a browser-based image generation and ecommerce product-image toolkit designed for a free Google Colab T4 GPU. It runs downloadable Hugging Face models directly in Python—no paid image API or local high-end computer is required.
@@ -43,6 +57,19 @@ Outputs are stored permanently under:
 ```
 
 Files receive timestamped, numbered names and existing images are never overwritten.
+
+## Hugging Face ZeroGPU deployment
+
+The repository also contains `hf_space_app.py`, a dedicated ZeroGPU application using `black-forest-labs/FLUX.1-schnell`. It can produce one to four 1024px images per request and retains the product-preserving white-background workflow.
+
+Before the first deployment:
+
+1. Sign in to Hugging Face and accept the access agreement on the [FLUX.1-schnell model page](https://huggingface.co/black-forest-labs/FLUX.1-schnell).
+2. Create a **Gradio** Space and select **ZeroGPU** hardware. Eligible free accounts can host up to two ZeroGPU Spaces.
+3. Add a Space secret named `HF_TOKEN` containing a Hugging Face read token belonging to the account that accepted the model agreement.
+4. Push this repository to the Space repository. Hugging Face reads the YAML configuration at the top of this README and starts `hf_space_app.py`.
+
+ZeroGPU is not unlimited. Logged-in free visitors currently receive five GPU minutes per day; anonymous visitors receive two minutes. GPU time, queues and cold starts affect how many images fit in that allowance.
 
 ## First use
 
