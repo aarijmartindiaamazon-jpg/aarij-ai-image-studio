@@ -104,6 +104,8 @@ To change a model ID, edit the model registry in `src/config.py`. Future backend
 
 **`rembg` or ONNX error:** Restart the runtime after dependency installation. The first removal downloads a segmentation model and needs internet access.
 
+**A red Error appears after creating a downloadable image:** Make sure the current notebook version is being used. The Gradio launcher must include the Drive output folder in `allowed_paths`; this is configured in the published notebook.
+
 **Stop Gradio:** Press the square stop icon beside the launch cell, choose **Runtime → Interrupt execution**, or restart the runtime. Public share links are temporary and expire when the runtime stops.
 
 ## Deployment later
