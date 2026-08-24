@@ -101,15 +101,21 @@ def split_collage(source, scale, quality, sharpen):
     if source is None:
         raise gr.Error("Upload a collage or multi-image picture first.")
     try:
-        target_long_side = 3840 if str(quality).startswith("4K") else None
+        use_ai = str(quality).startswith("AI")
+        target_long_side = 3840 if "4K" in str(quality) else None
+        ai_upscaler = None
+        if use_ai:
+            from src.ai_upscale import ai_super_resolve
+            ai_upscaler = ai_super_resolve
         panels = extract_and_enhance_panels(
-            source, int(scale), float(sharpen), min_short_side=1024,
-            target_long_side=target_long_side,
+            source, 1 if use_ai else int(scale), float(sharpen), min_short_side=1024,
+            target_long_side=target_long_side, ai_upscaler=ai_upscaler,
         )
         paths = [
             str(storage.save_image(panel, "reference-panels", f"panel_{index:02d}", {
                 "workflow": "pixel-preserving collage extraction", "scale": int(scale),
                 "quality": str(quality), "minimum_short_side": 1024,
+                "ai_super_resolution": use_ai,
             }))
             for index, panel in enumerate(panels, start=1)
         ]
@@ -118,7 +124,8 @@ def split_collage(source, scale, quality, sharpen):
             for index, path in enumerate(paths, start=1):
                 archive.write(path, arcname=f"aarij_enhanced_panel_{index:02d}.png")
         size_label = "4K long edge" if target_long_side else "minimum 1024px short edge"
-        return panels, paths, str(zip_path), f"Extracted {len(panels)} panel(s) at {size_label}. No AI details were invented."
+        method = "Real-ESRGAN AI restoration" if use_ai else "pixel-safe enlargement"
+        return panels, paths, str(zip_path), f"Extracted {len(panels)} panel(s) at {size_label} using {method}."
     except Exception as exc:
         raise gr.Error(friendly_error(exc, debug=True)) from exc
 
@@ -166,8 +173,13 @@ def build_space() -> gr.Blocks:
             with gr.Row():
                 panel_scale = gr.Dropdown([1, 2, 3, 4], value=2, label="Upscale factor")
                 panel_quality = gr.Dropdown(
-                    ["Minimum 1024px", "4K High Clarity (3840px long edge)"],
-                    value="Minimum 1024px", label="Export quality",
+                    [
+                        "AI Product Enhance (4x)",
+                        "AI Product Enhance + 4K",
+                        "Pixel-Safe Minimum 1024px",
+                        "Pixel-Safe 4K",
+                    ],
+                    value="AI Product Enhance (4x)", label="Enhancement mode",
                 )
                 panel_sharpen = gr.Slider(0, 2, 1, step=0.1, label="Detail sharpening")
             split_button = gr.Button("Extract All Panels", variant="primary")

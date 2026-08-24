@@ -40,6 +40,22 @@ def test_exports_minimum_1024px_short_edge_and_optional_4k():
     assert four_k[0].size[0] / four_k[0].size[1] == 1.5
 
 
+def test_uses_ai_upscaler_before_final_size_enforcement():
+    calls = []
+
+    def fake_ai(panel):
+        calls.append(panel.size)
+        return panel.resize((panel.width * 4, panel.height * 4))
+
+    result = extract_and_enhance_panels(
+        Image.new("RGB", (300, 200), "navy"), scale=1, sharpen=0,
+        min_short_side=1024, ai_upscaler=fake_ai,
+    )
+
+    assert calls == [(300, 200)]
+    assert min(result[0].size) == 1024
+
+
 def test_detects_thin_dark_dividers_without_splitting_wide_backgrounds():
     canvas = np.full((220, 320, 3), 80, dtype=np.uint8)
     canvas[:, 158:162] = 0

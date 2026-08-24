@@ -24,8 +24,10 @@ app = modal.App("aarij-ai-image-studio")
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("libgl1", "libglib2.0-0")
+    .pip_install("numpy==2.2.6", "cython==3.1.3")
     .pip_install(
         "torch==2.8.0",
+        "torchvision==0.23.0",
         "diffusers==0.35.1",
         "transformers==4.55.4",
         "accelerate==1.10.1",
@@ -39,6 +41,15 @@ image = (
         "sentencepiece==0.2.1",
         "protobuf==6.32.0",
         "spaces",
+    )
+    .pip_install(
+        "basicsr==1.4.2", "realesrgan==0.3.0",
+        extra_options="--no-build-isolation",
+    )
+    .run_commands(
+        "mkdir -p /models && python -c \"import urllib.request; "
+        "urllib.request.urlretrieve('https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth', "
+        "'/models/RealESRGAN_x4plus.pth')\""
     )
     .env(
         {

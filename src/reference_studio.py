@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
@@ -157,7 +158,8 @@ def detect_panel_boxes(image: Image.Image, *, white_threshold: int = 230,
 
 def extract_and_enhance_panels(image: Image.Image, scale: int = 2,
                                sharpen: float = 1.0, min_short_side: int = 1024,
-                               target_long_side: int | None = None) -> list[Image.Image]:
+                               target_long_side: int | None = None,
+                               ai_upscaler: Callable[[Image.Image], Image.Image] | None = None) -> list[Image.Image]:
     """Extract panels and upscale without changing their aspect ratios.
 
     Every output has at least ``min_short_side`` pixels on its shortest edge.
@@ -170,6 +172,8 @@ def extract_and_enhance_panels(image: Image.Image, scale: int = 2,
     for box in detect_panel_boxes(source):
         panel = source.crop((box.left, box.top, box.right, box.bottom))
         original_size = panel.size
+        if ai_upscaler is not None:
+            panel = ai_upscaler(panel)
         required_scale = max(float(scale), min_short_side / min(panel.size))
         if target_long_side:
             required_scale = max(required_scale, int(target_long_side) / max(panel.size))
