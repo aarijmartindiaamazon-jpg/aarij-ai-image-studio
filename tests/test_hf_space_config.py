@@ -20,7 +20,7 @@ def test_space_supports_multiple_images():
 
 def test_space_supports_reference_and_collage_workflows():
     app = (ROOT / "hf_space_app.py").read_text(encoding="utf-8")
-    assert "FluxImg2ImgPipeline.from_pipe(flux)" in app
+    assert "FluxImg2ImgPipeline(**flux.components)" in app
     assert "Optional reference image" in app
     assert "Collage Crop & Enhance" in app
 

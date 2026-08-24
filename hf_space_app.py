@@ -35,9 +35,9 @@ STYLES = {
 # ZeroGPU optimizes CUDA placement performed during Space startup. This model is
 # intentionally separate from the Colab lazy model manager.
 flux = FluxPipeline.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16)
+flux_img2img = FluxImg2ImgPipeline(**flux.components)
 flux.to("cuda")
 flux.set_progress_bar_config(disable=True)
-flux_img2img = FluxImg2ImgPipeline.from_pipe(flux)
 flux_img2img.set_progress_bar_config(disable=True)
 
 
