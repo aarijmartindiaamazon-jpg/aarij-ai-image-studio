@@ -64,7 +64,8 @@ image = (
     .add_local_dir(
         ".",
         remote_path=APP_DIR,
-        ignore=[".git", ".git/**", "__pycache__", "**/__pycache__/**", ".pytest_cache"],
+        ignore=[".git", ".git/**", "__pycache__", "**/__pycache__/**", ".pytest_cache",
+                ".venv", ".venv/**", "outputs", "outputs/**", "test-output", "test-output/**", ".env", ".env.*"],
     )
 )
 

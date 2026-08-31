@@ -26,3 +26,12 @@ def test_space_supports_reference_and_collage_workflows():
     assert "Download All Panels (ZIP)" in app
     assert "GRADIO_ROOT_PATH" in app
 
+
+def test_space_supports_smart_lock_batch_and_reference_profile():
+    app = (ROOT / "hf_space_app.py").read_text(encoding="utf-8")
+    assert 'Smart Lock Batch' in app
+    assert 'Check panel layouts' in app
+    assert 'Download all models (ZIP)' in app
+    assert 'fit_product_reference(reference' in app
+    assert 'value="Smart door locks"' in app
+

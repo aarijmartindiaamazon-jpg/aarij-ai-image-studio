@@ -11,11 +11,14 @@ import gradio as gr
 import spaces
 import torch
 from diffusers import FluxImg2ImgPipeline, FluxPipeline
-from PIL import Image, ImageOps
+from PIL import Image
 
 from src.errors import friendly_error
 from src.marketplace import create_white_background
 from src.reference_studio import extract_and_enhance_panels
+from src.lock_collage import detect_lock_panel_boxes, layout_preview
+from src.lock_batch import ENHANCEMENT_MODES, export_lock_batch, inspect_lock_batch
+from src.product_reference import PRODUCT_DETAILS, fit_product_reference, preservation_prompt, reference_steps
 from src.storage import StorageManager
 
 
@@ -51,6 +54,7 @@ def _seed(value: int | float | None, randomize: bool) -> int:
 @spaces.GPU(duration=120)
 def generate_flux(prompt: str, reference, strength: float, product_lock: bool, style: str, width: int,
                   height: int, count: int, seed: int, randomize: bool, steps: int,
+                  product_type: str = "General product",
                   progress=gr.Progress()):
     if not prompt or not prompt.strip():
         raise gr.Error("Please describe the image you want to create.")
@@ -58,11 +62,7 @@ def generate_flux(prompt: str, reference, strength: float, product_lock: bool, s
     preservation = ""
     if reference is not None and product_lock:
         strength = min(float(strength), 0.35)
-        preservation = (
-            "preserve the uploaded product identity and exact visible design: logo, readable text, dial layout, "
-            "hands, indices, date window, case, crown, bracelet links, colors, materials, proportions and engravings; "
-            "do not redesign, replace, add or remove product features, "
-        )
+        preservation = preservation_prompt(product_type)
     full_prompt = f"{preservation}{prompt.strip()}, {STYLES.get(style, '')}".strip(", ")
     width = max(512, int(width) // 16 * 16)
     height = max(512, int(height) // 16 * 16)
@@ -73,12 +73,12 @@ def generate_flux(prompt: str, reference, strength: float, product_lock: bool, s
         with torch.inference_mode():
             common = dict(
                 prompt=full_prompt, width=width, height=height,
-                num_inference_steps=min(4, max(1, int(steps))),
+                num_inference_steps=reference_steps(steps, strength) if reference is not None else min(4, max(1, int(steps))),
                 guidance_scale=0.0, num_images_per_prompt=count,
                 generator=generators, max_sequence_length=256,
             )
             if reference is not None:
-                init_image = ImageOps.fit(reference.convert("RGB"), (width, height), Image.Resampling.LANCZOS)
+                init_image = fit_product_reference(reference, (width, height))
                 images = flux_img2img(image=init_image, strength=float(strength), **common).images
             else:
                 images = flux(**common).images
@@ -107,11 +107,17 @@ def white_background(source, canvas, coverage, padding, shadow, strength):
         raise gr.Error(friendly_error(exc, debug=True)) from exc
 
 
-def split_collage(source, scale, quality, sharpen):
+def split_collage(source, scale, quality, sharpen, layout="General Auto"):
     if source is None:
         raise gr.Error("Upload a collage or multi-image picture first.")
     try:
         use_ai = str(quality).startswith("AI")
+        try:
+            lock_boxes = detect_lock_panel_boxes(source)
+        except ValueError:
+            if layout.startswith("Smart locks"):
+                raise
+            lock_boxes = None
         target_long_side = 3840 if "4K" in str(quality) else None
         ai_upscaler = None
         if use_ai:
@@ -120,10 +126,11 @@ def split_collage(source, scale, quality, sharpen):
         panels = extract_and_enhance_panels(
             source, 1 if use_ai else int(scale), float(sharpen), min_short_side=1024,
             target_long_side=target_long_side, ai_upscaler=ai_upscaler,
+            boxes=lock_boxes,
         )
         paths = [
             str(storage.save_image(panel, "reference-panels", f"panel_{index:02d}", {
-                "workflow": "pixel-preserving collage extraction", "scale": int(scale),
+                "workflow": "AI collage restoration" if use_ai else "collage enlargement", "scale": int(scale),
                 "quality": str(quality), "minimum_short_side": 1024,
                 "ai_super_resolution": use_ai,
             }))
@@ -140,10 +147,34 @@ def split_collage(source, scale, quality, sharpen):
         raise gr.Error(friendly_error(exc, debug=True)) from exc
 
 
+def preview_lock_batch(files):
+    try:
+        sheets = inspect_lock_batch(files)
+        previews = []
+        for sheet in sheets:
+            with Image.open(sheet.path) as image:
+                previews.append((layout_preview(image, sheet.boxes), f"{sheet.name} · {len(sheet.boxes)} panels"))
+        counts = "; ".join(f"{sheet.name}: {len(sheet.boxes)}" for sheet in sheets)
+        return previews, f"Ready: {len(sheets)} collages, {sum(len(s.boxes) for s in sheets)} panels. {counts}"
+    except Exception as exc:
+        raise gr.Error(str(exc)) from exc
+
+
+def process_lock_batch(files, quality, sharpen, progress=gr.Progress()):
+    try:
+        upscaler = None
+        if str(quality).startswith("AI"):
+            from src.ai_upscale import ai_super_resolve
+            upscaler = ai_super_resolve
+        return export_lock_batch(files, storage, quality, float(sharpen), upscaler, progress)
+    except Exception as exc:
+        raise gr.Error(friendly_error(exc, debug=True)) from exc
+
+
 def build_space() -> gr.Blocks:
     with gr.Blocks(title="Aarij AI Image Studio", theme=gr.themes.Soft()) as demo:
-        gr.Markdown("# Aarij AI Image Studio · ZeroGPU\nHigh-quality FLUX generation plus product-preserving ecommerce tools")
-        gr.Markdown("**Free quota notice:** ZeroGPU time is limited per Hugging Face account. Generate fewer images per request when conserving quota.")
+        gr.Markdown("# Aarij AI Image Studio\nProduct reference generation · Smart-lock batch extraction · AI restoration")
+        gr.Markdown("AI jobs use the hosting account's available GPU quota or credits. Download results before the app stops or restarts.")
 
         with gr.Tab("High-Quality Generator"):
             with gr.Row():
@@ -151,13 +182,15 @@ def build_space() -> gr.Blocks:
                     prompt = gr.Textbox(label="Describe your image", lines=5,
                                         placeholder="A premium green bean bag in a modern Indian living room, realistic scale...")
                     reference = gr.Image(label="Optional reference image", type="pil")
+                    product_type = gr.Dropdown(list(PRODUCT_DETAILS), value="Smart door locks", label="Reference product type")
                     reference_strength = gr.Slider(
                         0.15, 0.95, 0.30, step=0.05,
                         label="Reference recreation strength (lower preserves more)",
                     )
                     product_lock = gr.Checkbox(
-                        True, label="Product Detail Lock (recommended for watches/products)",
+                        True, label="Product Detail Lock (reference guidance, not a guarantee)",
                     )
+                    gr.Markdown("For smart locks, use one extracted panel as the reference. Handles and tall bodies are fitted without cropping. AI may still alter text or features.")
                     style = gr.Dropdown(list(STYLES), value="Ecommerce Product", label="Style")
                     with gr.Row():
                         width = gr.Dropdown([768, 1024, 1280], value=1024, label="Width")
@@ -173,8 +206,8 @@ def build_space() -> gr.Blocks:
                     downloads = gr.File(label="Download images", file_count="multiple")
                     seeds = gr.Textbox(label="Seeds used", interactive=False)
                     status = gr.Textbox(label="Status", interactive=False)
-            button.click(generate_flux, [prompt, reference, reference_strength, product_lock, style, width, height, count, seed, randomize, steps],
-                         [gallery, downloads, seeds, status])
+            button.click(generate_flux, [prompt, reference, reference_strength, product_lock, style, width, height, count, seed, randomize, steps, product_type],
+                         [gallery, downloads, seeds, status], concurrency_id="gpu", concurrency_limit=1)
 
         with gr.Tab("Collage Crop & Enhance"):
             gr.Markdown(
@@ -183,15 +216,13 @@ def build_space() -> gr.Blocks:
                 "cannot contain the same real detail as an original 4K photograph."
             )
             collage = gr.Image(label="Collage / contact sheet", type="pil")
+            panel_layout = gr.Dropdown(
+                ["General Auto", "Smart locks (6 / 7 panels)"], value="General Auto", label="Collage layout",
+            )
             with gr.Row():
                 panel_scale = gr.Dropdown([1, 2, 3, 4], value=2, label="Upscale factor")
                 panel_quality = gr.Dropdown(
-                    [
-                        "AI Product Enhance (4x)",
-                        "AI Product Enhance + 4K",
-                        "Pixel-Safe Minimum 1024px",
-                        "Pixel-Safe 4K",
-                    ],
+                    ENHANCEMENT_MODES,
                     value="AI Product Enhance (4x)", label="Enhancement mode",
                 )
                 panel_sharpen = gr.Slider(0, 2, 1, step=0.1, label="Detail sharpening")
@@ -200,8 +231,33 @@ def build_space() -> gr.Blocks:
             panel_files = gr.File(label="Download all panels", file_count="multiple")
             panel_zip = gr.File(label="Download All Panels (ZIP)")
             panel_status = gr.Textbox(label="Status", interactive=False)
-            split_button.click(split_collage, [collage, panel_scale, panel_quality, panel_sharpen],
-                               [panel_gallery, panel_files, panel_zip, panel_status])
+            split_button.click(split_collage, [collage, panel_scale, panel_quality, panel_sharpen, panel_layout],
+                               [panel_gallery, panel_files, panel_zip, panel_status], concurrency_id="gpu", concurrency_limit=1)
+
+        with gr.Tab("Smart Lock Batch"):
+            gr.Markdown(
+                "Upload up to **10 smart-lock collages** together. Supports six-panel boards, unequal columns, "
+                "and the V60 seven-panel layout with its wide packaging image. Check the numbered crop preview first. "
+                "AI enhancement is optional and may alter fine text; Pixel-Safe mode only resizes/sharpens. "
+                "4K is an export size, not a guarantee of recovered detail."
+            )
+            lock_files = gr.File(label="Upload smart-lock collages (up to 10)", file_count="multiple", file_types=["image"], type="filepath")
+            lock_check = gr.Button("Check panel layouts")
+            lock_preview = gr.Gallery(label="Numbered crop previews", columns=2, height="auto")
+            lock_check_status = gr.Textbox(label="Layout check", interactive=False)
+            with gr.Row():
+                lock_quality = gr.Dropdown(ENHANCEMENT_MODES, value="AI Product Enhance (4x)", label="Batch enhancement mode")
+                lock_sharpen = gr.Slider(0, 2, .5, step=.1, label="Batch detail sharpening")
+            lock_start = gr.Button("Enhance & Download All Lock Panels", variant="primary")
+            lock_gallery = gr.Gallery(label="Enhanced lock panels (thumbnail previews)", columns=3, height="auto")
+            lock_downloads = gr.File(label="Full-resolution individual images", file_count="multiple")
+            lock_zip = gr.File(label="Download all models (ZIP)")
+            lock_status = gr.Textbox(label="Batch status", interactive=False)
+            lock_check.click(preview_lock_batch, [lock_files], [lock_preview, lock_check_status])
+            lock_start.click(process_lock_batch, [lock_files, lock_quality, lock_sharpen],
+                             [lock_gallery, lock_downloads, lock_zip, lock_status], concurrency_id="gpu", concurrency_limit=1)
+            lock_files.change(lambda: ([], [], None, "", [], ""), [],
+                              [lock_gallery, lock_downloads, lock_zip, lock_status, lock_preview, lock_check_status], queue=False)
 
         with gr.Tab("White Background"):
             gr.Markdown("This mode does not regenerate the product. It removes the background and preserves the uploaded product pixels.")

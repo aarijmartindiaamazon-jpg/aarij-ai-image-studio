@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 
 @dataclass(frozen=True)
@@ -159,17 +159,18 @@ def detect_panel_boxes(image: Image.Image, *, white_threshold: int = 230,
 def extract_and_enhance_panels(image: Image.Image, scale: int = 2,
                                sharpen: float = 1.0, min_short_side: int = 1024,
                                target_long_side: int | None = None,
-                               ai_upscaler: Callable[[Image.Image], Image.Image] | None = None) -> list[Image.Image]:
+                               ai_upscaler: Callable[[Image.Image], Image.Image] | None = None,
+                               boxes: list[PanelBox] | None = None) -> list[Image.Image]:
     """Extract panels and upscale without changing their aspect ratios.
 
     Every output has at least ``min_short_side`` pixels on its shortest edge.
     When requested, ``target_long_side`` raises the long edge to that target
     (for example 3840 for a 4K export), but never downsizes a larger source.
     """
-    source = image.convert("RGB")
+    source = ImageOps.exif_transpose(image).convert("RGB")
     scale = min(4, max(1, int(scale)))
     results: list[Image.Image] = []
-    for box in detect_panel_boxes(source):
+    for box in (boxes if boxes is not None else detect_panel_boxes(source)):
         panel = source.crop((box.left, box.top, box.right, box.bottom))
         original_size = panel.size
         if ai_upscaler is not None:

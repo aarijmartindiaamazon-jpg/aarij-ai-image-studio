@@ -14,6 +14,27 @@ models:
 
 # Aarij AI Image Studio
 
+## Smart-lock collages (Modal app)
+
+Use **Smart Lock Batch** for the VELORA V45, V46, V47, V48, V49, V50, V54 and V60 boards.
+
+1. Upload up to 10 collages (original or updated versions).
+2. Select **Check panel layouts** to inspect numbered crop boundaries.
+3. Choose **AI Product Enhance (4x)** or **AI Product Enhance + 4K**. Pixel-Safe modes do not run a restoration model.
+4. Run the batch and download individual full-resolution PNGs or the model-grouped ZIP.
+
+Six-panel layouts, unequal columns, rounded corners and the V60's seven-panel layout are supported.
+The 10 supplied model collages contain 61 panels. ZIPs include a manifest with source filenames,
+crop coordinates and output dimensions. Upload original and updated sets in separate batches;
+files with duplicate model names receive separate numbered folders. Download before the server restarts.
+
+For one collage, use **Collage Crop & Enhance → Smart locks (6 / 7 panels)**.
+For recreation, choose **Smart door locks** as the reference product type and upload a single extracted panel.
+Reference fitting retains the whole handle/body instead of center-cropping it.
+Product Detail Lock supplies model guidance only, not exact geometric or text preservation.
+AI restoration can change keypad digits, logos or sensor details; review exports before publishing.
+4K describes output dimensions, not native recovered detail. No model-specific specifications are inferred.
+
 ## Deploy on Modal (L40S GPU)
 
 Modal provides a monthly free compute credit on its Starter plan; it is a finite credit, not unlimited GPU time. The app scales to zero after five idle minutes and caches FLUX weights in a persistent Volume.
